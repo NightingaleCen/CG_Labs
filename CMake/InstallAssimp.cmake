@@ -19,12 +19,18 @@ if (NOT assimp_FOUND)
 	endif ()
 
 	message (STATUS "Setting up CMake for assimp…")
+	if (APPLE)
+		# Assimp's bundled zlib is incompatible with recent Apple SDK headers.
+		set (LUGGCGL_ASSIMP_BUILD_ZLIB OFF)
+	else ()
+		set (LUGGCGL_ASSIMP_BUILD_ZLIB ON)
+	endif ()
 	execute_process (
 		COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}"
 		                         -A "${CMAKE_GENERATOR_PLATFORM}"
 		                         -DASSIMP_NO_EXPORT=ON
 		                         -DASSIMP_BUILD_ASSIMP_TOOLS=OFF
-								 -DASSIMP_BUILD_ZLIB=ON
+								 -DASSIMP_BUILD_ZLIB=${LUGGCGL_ASSIMP_BUILD_ZLIB}
 		                         -DASSIMP_BUILD_TESTS=OFF
 		                         -DCMAKE_INSTALL_PREFIX=${assimp_INSTALL_DIR}
 		                         -DCMAKE_BUILD_TYPE=Release

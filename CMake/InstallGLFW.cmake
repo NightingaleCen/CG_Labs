@@ -22,6 +22,7 @@ if (NOT glfw3_FOUND)
 	execute_process (
 		COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}"
 		                         -A "${CMAKE_GENERATOR_PLATFORM}"
+		                         -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 		                         -DGLFW_BUILD_DOCS=OFF
 		                         -DGLFW_BUILD_TESTS=OFF
 		                         -DGLFW_BUILD_EXAMPLES=OFF

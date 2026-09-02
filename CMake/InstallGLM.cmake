@@ -24,9 +24,15 @@ if (NOT glm_FOUND)
 	endif ()
 
 	message (STATUS "Setting up CMake for glm…")
+	set (LUGGCGL_GLM_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+	if (APPLE)
+		string (APPEND LUGGCGL_GLM_CXX_FLAGS " -Wno-error=poison-system-directories")
+	endif ()
 	execute_process (
 		COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}"
 		                         -A "${CMAKE_GENERATOR_PLATFORM}"
+		                         -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+		                         "-DCMAKE_CXX_FLAGS=${LUGGCGL_GLM_CXX_FLAGS}"
 		                         -DCMAKE_INSTALL_PREFIX=${glm_INSTALL_DIR}
 		                         -DCMAKE_BUILD_TYPE=Release
 					 -DGLM_TEST_ENABLE=OFF
