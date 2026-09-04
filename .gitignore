@@ -22,3 +22,6 @@ log.txt
 *.sdf
 *.suo
 *.vcxproj.user
+
+# Visual Studio Code Files
+.vscode/

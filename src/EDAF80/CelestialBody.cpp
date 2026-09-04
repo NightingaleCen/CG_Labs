@@ -26,9 +26,32 @@ glm::mat4 CelestialBody::render(std::chrono::microseconds elapsed_time,
 	// milliseconds, the following would have been used:
 	// auto const elapsed_time_ms = std::chrono::duration<float, std::milli>(elapsed_time).count();
 
-	_body.spin.rotation_angle = -glm::half_pi<float>() / 2.0f;
+	// Update the rotation angles
+	_body.spin.rotation_angle += _body.spin.speed * elapsed_time_s;
+	_body.orbit.rotation_angle += _body.orbit.speed * elapsed_time_s;
 
-	glm::mat4 world = parent_transform;
+	glm::mat4 world;
+
+	// Scale
+	glm::mat4 scale = glm::scale(glm::mat4(1.0f), _body.scale);
+
+	// Rotate
+	glm::mat4 rotation1 = glm::rotate(glm::mat4(1.0f), _body.spin.rotation_angle, glm::vec3(0.0f, 1.0f, 0.0f));
+	glm::mat4 rotation2 = glm::rotate(glm::mat4(1.0f), _body.spin.axial_tilt, glm::vec3(0.0f, 0.0f, 1.0f));
+
+	// Orbit
+	glm::mat4 orbit_translation = glm::translate(glm::mat4(1.0f), glm::vec3(_body.orbit.radius, 0.0f, 0.0f));
+	glm::mat4 orbit_rotation1 = glm::rotate(glm::mat4(1.0f), _body.orbit.rotation_angle, glm::vec3(0.0f, 1.0f, 0.0f));
+	glm::mat4 orbit_rotation2 = glm::rotate(glm::mat4(1.0f), _body.orbit.inclination, glm::vec3(0.0f, 0.0f, 1.0f));
+
+	if (_body.spin.independent_tilt) // Ex 8
+	{
+		glm::mat4 counter_rotation = glm::rotate(glm::mat4(1.0f), -_body.orbit.rotation_angle, glm::vec3(0.0f, 1.0f, 0.0f));
+		rotation2 = counter_rotation * rotation2;
+    } 
+
+	world = parent_transform * orbit_rotation2 * orbit_rotation1 *
+				orbit_translation * rotation2 * rotation1 * scale;
 
 	if (show_basis)
 	{
@@ -43,7 +66,20 @@ glm::mat4 CelestialBody::render(std::chrono::microseconds elapsed_time,
 	// world matrix.
 	_body.node.render(view_projection, world);
 
-	return parent_transform;
+	glm::mat4 transform_for_child = 
+		parent_transform * orbit_rotation2 * orbit_rotation1 * 
+		orbit_translation * rotation2;
+	
+	// Render the ring
+	if (_ring.is_set) {
+		glm::mat4 ring_scale = glm::scale(glm::mat4(1.0f), glm::vec3(_ring.scale, 0.0f));
+		glm::mat4 ring_rotation = glm::rotate(glm::mat4(1.0f), glm::half_pi<float>(),
+											  glm::vec3(1.0f, 0.0f, 0.0f));
+		_ring.node.render(view_projection,
+						transform_for_child * ring_rotation * ring_scale);
+	}
+
+	return transform_for_child; 
 }
 
 void CelestialBody::add_child(CelestialBody* child)
@@ -69,11 +105,12 @@ void CelestialBody::set_scale(glm::vec3 const& scale)
 	_body.scale = scale;
 }
 
-void CelestialBody::set_spin(SpinConfiguration const& configuration)
+void CelestialBody::set_spin(SpinConfiguration const& configuration, bool independent_tilt)
 {
 	_body.spin.axial_tilt = configuration.axial_tilt;
 	_body.spin.speed = configuration.speed;
 	_body.spin.rotation_angle = 0.0f;
+	_body.spin.independent_tilt = independent_tilt;
 }
 
 void CelestialBody::set_ring(bonobo::mesh_data const& shape,

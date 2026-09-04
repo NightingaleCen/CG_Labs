@@ -64,7 +64,7 @@ public:
 	void set_scale(glm::vec3 const& scale);
 
 	//! \brief Configure the spin parameters for this celestial body.
-	void set_spin(SpinConfiguration const& configuration);
+	void set_spin(SpinConfiguration const& configuration, bool independent_tilt = true);
 
 	//! \brief Default constructor for a celestial body.
 	//!
@@ -93,6 +93,7 @@ private:
 			float axial_tilt{0.0f};     //!< Angle in radians between the its rotational and orbital axis.
 			float speed{0.0f};          //!< Rotation speed in radians per second.
 			float rotation_angle{0.0f}; //!< How much has it rotated around its rotational axis; in radians.
+			bool independent_tilt{true};
 		} spin;
 	} _body;
 
