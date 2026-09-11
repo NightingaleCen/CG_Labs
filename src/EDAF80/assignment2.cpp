@@ -43,12 +43,13 @@ void
 edaf80::Assignment2::run()
 {
 	// Load the sphere geometry
-	auto const shape = parametric_shapes::createCircleRing(2.0f, 0.75f, 40u, 4u);
+	auto const shape = parametric_shapes::createSphere(0.15f, 10u, 10u);
 	if (shape.vao == 0u)
 		return;
 
 	// Set up the camera
-	mCamera.mWorld.SetTranslate(glm::vec3(0.0f, 1.0f, 9.0f));
+	//mCamera.mWorld.SetTranslate(glm::vec3(0.0f, 0.0f, 0.5f)); // Ex 1
+	mCamera.mWorld.SetTranslate(glm::vec3(0.0f, 1.0f, 9.0f)); // Ex 2 
 	mCamera.mMouseSensitivity = glm::vec2(0.003f);
 	mCamera.mMovementSpeed = glm::vec3(3.0f); // 3 m/s => 10.8 km/h
 
@@ -111,7 +112,7 @@ edaf80::Assignment2::run()
 
 	// Set the default tensions value; it can always be changed at runtime
 	// through the "Scene Controls" window.
-	float catmull_rom_tension = 0.0f;
+	float catmull_rom_tension = 0.5f;
 
 	// Set whether the default interpolation algorithm should be the linear one;
 	// it can always be changed at runtime through the "Scene Controls" window.
@@ -214,19 +215,33 @@ edaf80::Assignment2::run()
 
 
 		if (interpolate) {
-			//! \todo Interpolate the movement of a shape between various
-			//!        control points.
+			const size_t path_slice_count = control_point_locations.size();
+			const float current_progress = glm::mod(elapsed_time_s, static_cast<float>(path_slice_count)); 
+			const int current_slice = static_cast<int>(std::floor(current_progress));
+
+			// fixed time for each slice (1s per slice)
+			// vary the time for different length to fix the velocity
+			const float slice_progress = current_progress - static_cast<float>(current_slice);
+
 			if (use_linear) {
-				//! \todo Compute the interpolated position
-				//!       using the linear interpolation.
+				glm::vec3 p0 = control_point_locations[current_slice];
+				glm::vec3 p1 = control_point_locations[(current_slice + 1) % path_slice_count]; // loop back
+				
+				const glm::vec3 interpolated_position = interpolation::evalLERP(p0, p1, slice_progress);
+				circle_rings.get_transform().SetTranslate(interpolated_position);
 			}
 			else {
-				//! \todo Compute the interpolated position
-				//!       using the Catmull-Rom interpolation;
-				//!       use the `catmull_rom_tension`
-				//!       variable as your tension argument.
+				glm::vec3 p0 = control_point_locations[(current_slice - 1 + path_slice_count) % path_slice_count]; 
+				glm::vec3 p1 = control_point_locations[current_slice];
+				glm::vec3 p2 = control_point_locations[(current_slice + 1) % path_slice_count]; 
+				glm::vec3 p3 = control_point_locations[(current_slice + 2) % path_slice_count]; 
+
+				const glm::vec3 interpolated_position = interpolation::evalCatmullRom(p0, p1, p2, p3, catmull_rom_tension, slice_progress);
+				circle_rings.get_transform().SetTranslate(interpolated_position);
 			}
 		}
+
+		// to get the "facing-forward" direction, we can just calculate the derivative numerically
 
 		circle_rings.render(mCamera.GetWorldToClipMatrix());
 		if (show_control_points) {
