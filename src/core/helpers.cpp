@@ -392,7 +392,7 @@ bonobo::loadTexture2D(std::string const& filename, bool generate_mipmap)
 	GLuint texture = bonobo::createTexture(width, height, GL_TEXTURE_2D, GL_RGBA, GL_RGBA, GL_UNSIGNED_BYTE, reinterpret_cast<GLvoid const*>(data.data()));
 	glBindTexture(GL_TEXTURE_2D, texture);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, generate_mipmap ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); // interpolation method to use when magnifying/minifying the texture
 	if (generate_mipmap)
 		glGenerateMipmap(GL_TEXTURE_2D);
 	glBindTexture(GL_TEXTURE_2D, 0u);
@@ -411,7 +411,7 @@ bonobo::loadTextureCubeMap(std::string const& posx, std::string const& negx,
 	// and `glGenBuffers()` that were used in assignment 2,
 	// `glGenTextures()` can create `n` texture objects at once. Here we
 	// only one texture object that will contain our whole cube map.
-	glGenTextures(1, /*! \todo fill me */nullptr);
+	glGenTextures(1, &texture);
 	assert(texture != 0u);
 
 	// Similarly to vertex arrays and buffers, we first need to bind the
@@ -424,7 +424,7 @@ bonobo::loadTextureCubeMap(std::string const& posx, std::string const& negx,
 	// Set the wrapping properties of the texture; you can have a look on
 	// http://docs.gl to learn more about them
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // what to do for coordinates outside the range in the s direction
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 	// Set the minification and magnification properties of the textures;
@@ -437,32 +437,44 @@ bonobo::loadTextureCubeMap(std::string const& posx, std::string const& negx,
 	// argument. The function `getTextureData()` uses stb to read in the
 	// image files and return a `std::vector<std::uint8_t>` containing all the
 	// texels.
-	std::uint32_t width, height;
-	auto data = getTextureData(negx, width, height, false);
-	if (data.empty()) {
-		glDeleteTextures(1, &texture);
-		return 0u;
-	}
-	// With all the texels available on the CPU, we now want to push them
-	// to the GPU: this is done using `glTexImage2D()` (among others). You
-	// might have thought that the target used here would be the same as
-	// the one passed to `glBindTexture()` or `glTexParameteri()`, similar
-	// to what is done `bonobo::loadTexture2D()`. However, we want to fill
-	// in a cube map, which has six different faces, so instead we specify
-	// as the target the face we want to fill in. In this case, we will
-	// start by filling the face sitting on the negative side of the
-	// x-axis by specifying GL_TEXTURE_CUBE_MAP_NEGATIVE_X.
-	glTexImage2D(GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
-	             /* mipmap level, you'll see that in EDAN35 */0,
-	             /* how are the components internally stored */GL_RGBA,
-	             /* the width of the cube map's face */static_cast<GLsizei>(width),
-	             /* the height of the cube map's face */static_cast<GLsizei>(height),
-	             /* must always be 0 */0,
-	             /* the format of the pixel data: which components are available */GL_RGBA,
-	             /* the type of each component */GL_UNSIGNED_BYTE,
-	             /* the pointer to the actual data on the CPU */reinterpret_cast<GLvoid const*>(data.data()));
 
-	//! \todo repeat now the texture filling for the 5 remaining faces
+	std::array<std::string, 6> faces{posx, negx, posy, negy, posz, negz};
+	std::array<GLenum, 6> targets{
+		GL_TEXTURE_CUBE_MAP_POSITIVE_X,
+		GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
+		GL_TEXTURE_CUBE_MAP_POSITIVE_Y,
+		GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
+		GL_TEXTURE_CUBE_MAP_POSITIVE_Z,
+		GL_TEXTURE_CUBE_MAP_NEGATIVE_Z
+	};
+
+	for (std::size_t i = 0; i < faces.size(); ++i)
+	{
+		std::uint32_t width, height;
+		auto data = getTextureData(faces[i], width, height, false);
+		if (data.empty()) {
+			glDeleteTextures(1, &texture);
+			return 0u;
+		}
+		// With all the texels available on the CPU, we now want to push them
+		// to the GPU: this is done using `glTexImage2D()` (among others). You
+		// might have thought that the target used here would be the same as
+		// the one passed to `glBindTexture()` or `glTexParameteri()`, similar
+		// to what is done `bonobo::loadTexture2D()`. However, we want to fill
+		// in a cube map, which has six different faces, so instead we specify
+		// as the target the face we want to fill in. In this case, we will
+		// start by filling the face sitting on the negative side of the
+		// x-axis by specifying GL_TEXTURE_CUBE_MAP_NEGATIVE_X.
+		glTexImage2D(targets[i],
+					/* mipmap level, you'll see that in EDAN35 */0,
+					/* how are the components internally stored */GL_RGBA,
+					/* the width of the cube map's face */static_cast<GLsizei>(width),
+					/* the height of the cube map's face */static_cast<GLsizei>(height),
+					/* must always be 0 */0,
+					/* the format of the pixel data: which components are available */GL_RGBA,
+					/* the type of each component */GL_UNSIGNED_BYTE,
+					/* the pointer to the actual data on the CPU */reinterpret_cast<GLvoid const*>(data.data()));
+	}
 
 	if (generate_mipmap)
 		// Generate the mipmap hierarchy; wait for EDAN35 to understand

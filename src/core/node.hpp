@@ -105,6 +105,14 @@ public:
 	//!                  GL_TEXTURE_CUBE_MAP, etc.
 	void add_texture(std::string const& name, GLuint tex_id, GLenum type);
 
+	//! \brief Replace a texture attached to this node, or add it if absent.
+	//!
+	//! @param [in] name the variable name used by the attached OpenGL shader program
+	//! @param [in] tex_id the name of an OpenGL texture
+	//! @param [in] type the type of texture, i.e. GL_TEXTURE_2D,
+	//!                  GL_TEXTURE_CUBE_MAP, etc.
+	void set_texture(std::string const& name, GLuint tex_id, GLenum type);
+
 	//! \brief Add a child to this node.
 	//!
 	//! @param [in] child pointer to the child to add; the pointer has to

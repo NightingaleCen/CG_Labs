@@ -153,6 +153,17 @@ void Node::add_texture(std::string const &name, GLuint tex_id, GLenum type) {
   _textures.emplace_back(name, tex_id, type);
 }
 
+void Node::set_texture(std::string const &name, GLuint tex_id, GLenum type) {
+  for (auto &texture : _textures) {
+    if (std::get<0>(texture) == name) {
+      texture = std::make_tuple(name, tex_id, type);
+      return;
+    }
+  }
+
+  add_texture(name, tex_id, type);
+}
+
 void Node::add_child(Node const *child) {
   if (child == nullptr) {
     LogWarning(
