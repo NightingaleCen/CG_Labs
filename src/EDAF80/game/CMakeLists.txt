@@ -1,0 +1,20 @@
+target_sources (
+	EDAF80_Assignment5
+	PRIVATE
+		[[Ground.hpp]]
+		[[Ground.cpp]]
+		[[external/PerlinNoise.hpp]]
+		[[external/PoissonGenerator.h]]
+		[[Character.hpp]]
+		[[Character.cpp]]
+		[[Cake.hpp]]
+		[[Cake.cpp]]
+		[[Game.hpp]]
+		[[Game.cpp]]
+		[[Helpers.hpp]]
+		[[Helpers.cpp]]
+		[[Tree.hpp]]
+		[[Tree.cpp]]
+		[[Monster.hpp]]
+		[[Monster.cpp]]
+)

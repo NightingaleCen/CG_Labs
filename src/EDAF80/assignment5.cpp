@@ -1,16 +1,21 @@
 #include "assignment5.hpp"
+#include "game/Game.hpp"
 
 #include "config.hpp"
 #include "core/Bonobo.h"
 #include "core/FPSCamera.h"
 #include "core/helpers.hpp"
+#include "core/node.hpp"
 #include "core/ShaderProgramManager.hpp"
 
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <imgui.h>
 #include <tinyfiledialogs.h>
 
 #include <clocale>
 #include <stdexcept>
+#include <random>
 
 edaf80::Assignment5::Assignment5(WindowManager& windowManager) :
 	mCamera(0.5f * glm::half_pi<float>(),
@@ -36,10 +41,41 @@ edaf80::Assignment5::~Assignment5()
 void
 edaf80::Assignment5::run()
 {
+	// Global game settings
+	const float ground_size = 100.0f;
+	std::mt19937 random_generator(std::random_device{}());
+	unsigned int random_seed = random_generator();
+
+	// Tree settings
+	const float tree_min_distance = 4.0f;
+
+	// Character settings
+	const float character_eye_height = 0.9f;
+	const float character_walk_speed = 2.0f;
+	const float character_run_speed = 4.26767f;
+
+	// Monster settings
+	const game::Monster::Settings monster_settings;
+
+	// Lighting settings
+	bool night_lighting = true;
+	const glm::vec3 flashlight_color(1.0f, 0.94f, 0.80f);
+	const float flashlight_range = 30.0f;
+	const float flashlight_inner_angle = glm::radians(12.0f);
+	const float flashlight_outer_angle = glm::radians(20.0f);
+	const float flashlight_brightness = 4.0f;
+
 	// Set up the camera
-	mCamera.mWorld.SetTranslate(glm::vec3(0.0f, 0.0f, 6.0f));
+	mCamera.mWorld.SetTranslate(glm::vec3(20.0f, 20.0f, 0.0f)); // height will be set later
+	mCamera.mWorld.LookTowards(glm::vec3(0.0f, 0.0f, -1.0f));
 	mCamera.mMouseSensitivity = glm::vec2(0.003f);
-	mCamera.mMovementSpeed = glm::vec3(3.0f); // 3 m/s => 10.8 km/h
+	mCamera.mMovementSpeed = glm::vec3(6.0f); // speed for fly mode
+
+	// Set up the charecter
+	game::Game game(ground_size, random_seed, character_eye_height, tree_min_distance, monster_settings);
+	auto& character = game.getCharacter();
+	character.setSpeed(character_walk_speed);
+	mCamera.mWorld.SetTranslate(game.getEyePosition());
 
 	// Create the shader programs
 	ShaderProgramManager program_manager;
@@ -53,40 +89,119 @@ edaf80::Assignment5::run()
 		return;
 	}
 
-	//
-	// Todo: Insert the creation of other shader programs.
-	//       (Check how it was done in assignment 3.)
-	//
+	GLuint ground_shader = 0u;
+	program_manager.CreateAndRegisterProgram("Ground",
+	                                         { { ShaderType::vertex, "EDAF80/ground.vert" },
+	                                           { ShaderType::fragment, "EDAF80/ground.frag" } },
+	                                         ground_shader);
+	if (ground_shader == 0u) {
+		LogError("Failed to load ground shader");
+		return;
+	}
 
-	//
-	// Todo: Load your geometry
-	//
+	GLuint cake_shader = 0u;
+	program_manager.CreateAndRegisterProgram("Cake",
+	                                         { { ShaderType::vertex, "EDAF80/cake.vert" },
+	                                           { ShaderType::fragment, "EDAF80/cake.frag" } },
+	                                         cake_shader);
+	if (cake_shader == 0u) {
+		LogError("Failed to load cake shader");
+		return;
+	}
+
+	// Create the game objects
+	auto const light_direction = glm::normalize(glm::vec3(-0.4f, 1.0f, 0.3f));
+	auto camera_position = mCamera.mWorld.GetTranslation();
+	auto camera_direction = mCamera.mWorld.GetFront();
+
+	auto const set_uniforms = [&light_direction, &camera_position, &camera_direction, &night_lighting,
+	                           &flashlight_color, &flashlight_range, &flashlight_inner_angle,
+	                           &flashlight_outer_angle, &flashlight_brightness](GLuint program) {
+		glUniform3fv(glGetUniformLocation(program, "light_direction"), 1, glm::value_ptr(light_direction));
+		glUniform3fv(glGetUniformLocation(program, "camera_position"), 1, glm::value_ptr(camera_position));
+		glUniform3fv(glGetUniformLocation(program, "camera_direction"), 1, glm::value_ptr(camera_direction));
+		glUniform1i(glGetUniformLocation(program, "night_lighting"), night_lighting);
+		glUniform3fv(glGetUniformLocation(program, "flashlight_color"), 1, glm::value_ptr(flashlight_color));
+		glUniform1f(glGetUniformLocation(program, "flashlight_range"), flashlight_range);
+		glUniform1f(glGetUniformLocation(program, "flashlight_inner_angle"), flashlight_inner_angle);
+		glUniform1f(glGetUniformLocation(program, "flashlight_outer_angle"), flashlight_outer_angle);
+		glUniform1f(glGetUniformLocation(program, "flashlight_brightness"), flashlight_brightness);
+	};
+
+	game.setPrograms(&ground_shader, &cake_shader, set_uniforms);
 
 	glClearDepthf(1.0f);
-	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 	glEnable(GL_DEPTH_TEST);
 
 
+	// Set up some helper variables
 	auto lastTime = std::chrono::high_resolution_clock::now();
 
-	bool show_logs = true;
+	bool show_logs = false;
 	bool show_gui = true;
+	auto polygon_mode = bonobo::polygon_mode_t::fill;
 	bool shader_reload_failed = false;
 	bool show_basis = false;
+	bool fly_mode = false;
 	float basis_thickness_scale = 1.0f;
 	float basis_length_scale = 1.0f;
+	glm::quat capture_start_rotation(1.0f, 0.0f, 0.0f, 0.0f);
+	glm::quat capture_target_rotation(1.0f, 0.0f, 0.0f, 0.0f);
 
 	while (!glfwWindowShouldClose(window)) {
 		auto const nowTime = std::chrono::high_resolution_clock::now();
 		auto const deltaTimeUs = std::chrono::duration_cast<std::chrono::microseconds>(nowTime - lastTime);
+		auto const deltaTimeSec = std::chrono::duration_cast<std::chrono::duration<float>>(deltaTimeUs);
 		lastTime = nowTime;
 
 		auto& io = ImGui::GetIO();
 		inputHandler.SetUICapture(io.WantCaptureMouse, io.WantCaptureKeyboard);
 
+		// Handle input events and character movement
 		glfwPollEvents();
 		inputHandler.Advance();
-		mCamera.Update(deltaTimeUs, inputHandler);
+		const bool controls_locked = game.getState() == game::GameState::Caught ||
+		                             game.getState() == game::GameState::Lost;
+		if (fly_mode && !controls_locked) {
+			mCamera.Update(deltaTimeUs, inputHandler);
+		} else {
+			if (inputHandler.GetKeycodeState(GLFW_KEY_LEFT_SHIFT) & PRESSED) {
+				character.setSpeed(character_run_speed);
+			} else {
+				character.setSpeed(character_walk_speed);
+			}
+			mCamera.Update(deltaTimeUs, inputHandler, true, controls_locked); // keyboard disabled and handled in game.update()
+			const auto previous_state = game.getState();
+			game.update(deltaTimeSec.count(), mCamera.mWorld.GetFront(), inputHandler);
+
+
+			mCamera.mWorld.SetTranslate(game.getEyePosition());
+
+			// turn towards the monster when caught
+			if (previous_state == game::GameState::Playing && game.getState() == game::GameState::Caught) {
+				capture_start_rotation = glm::quat_cast(mCamera.mWorld.GetRotation());
+				auto target_transform = mCamera.mWorld;
+				target_transform.LookAt(game.getMonster().getFacePosition());
+				capture_target_rotation = glm::quat_cast(target_transform.GetRotation());
+			}
+			if (game.getState() == game::GameState::Caught || game.getState() == game::GameState::Lost) {
+				const float progress = glm::clamp(game.getCaptureTime() / game::Game::capture_turn_duration,
+				                                  0.0f, 1.0f);
+				const auto rotation = glm::slerp(capture_start_rotation, capture_target_rotation, progress);
+				mCamera.mWorld.LookTowards(rotation * glm::vec3(0.0f, 0.0f, -1.0f),
+				                          rotation * glm::vec3(0.0f, 1.0f, 0.0f));
+			}
+		}
+		if (game.getState() != game::GameState::Caught && !inputHandler.IsKeyboardCapturedByUI() &&
+		    (inputHandler.GetKeycodeState(GLFW_KEY_ENTER) & JUST_PRESSED)) {
+			random_seed = random_generator();
+			game.reset(random_seed);
+			fly_mode = false;
+			mCamera.mWorld.SetTranslate(game.getEyePosition());
+			mCamera.mWorld.LookTowards(glm::vec3(0.0f, 0.0f, -1.0f));
+		}
+		camera_position = mCamera.mWorld.GetTranslation();
+		camera_direction = mCamera.mWorld.GetFront();
 
 		if (inputHandler.GetKeycodeState(GLFW_KEY_R) & JUST_PRESSED) {
 			shader_reload_failed = !program_manager.ReloadAllPrograms();
@@ -96,6 +211,9 @@ edaf80::Assignment5::run()
 				                   "Rendering is suspended until the issue is solved. Once fixed, just reload the shaders again.",
 				                   "error");
 		}
+		if (game.getState() == game::GameState::Playing &&
+		    (inputHandler.GetKeycodeState(GLFW_KEY_F) & JUST_PRESSED))
+			fly_mode = !fly_mode;
 		if (inputHandler.GetKeycodeState(GLFW_KEY_F3) & JUST_RELEASED)
 			show_logs = !show_logs;
 		if (inputHandler.GetKeycodeState(GLFW_KEY_F2) & JUST_RELEASED)
@@ -116,31 +234,56 @@ edaf80::Assignment5::run()
 		glViewport(0, 0, framebuffer_width, framebuffer_height);
 
 
-		//
-		// Todo: If you need to handle inputs, you can do it here
-		//
-
-
 		mWindowManager.NewImGuiFrame();
 
+		if (night_lighting)
+			glClearColor(0.02f, 0.0f, 0.08f, 1.0f); // night sky
+		else
+			glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
 
+		// Render the scene
 		if (!shader_reload_failed) {
-			//
-			// Todo: Render all your geometry here.
-			//
+			bonobo::changePolygonMode(polygon_mode);
+			game.render(mCamera.GetWorldToClipMatrix());
 		}
 
 
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-		//
-		// Todo: If you want a custom ImGUI window, you can set it up
-		//       here
-		//
+		// show the game state
+		ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_Once);
+		ImGui::Begin("Game", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+		ImGui::Text("Cakes: %u / %u", game.getCollectedCount(), game::Game::cake_count);
+		if (game.getState() == game::GameState::Won)
+			ImGui::TextUnformatted("All cakes collected! You won.");
+		else if (game.getState() == game::GameState::Caught)
+			ImGui::TextUnformatted("Caught by the monster...");
+		else if (game.getState() == game::GameState::Lost)
+			ImGui::TextUnformatted("Game over. Try again!");
+		else
+			ImGui::TextUnformatted("Find all seven cakes.");
+		ImGui::BeginDisabled(game.getState() == game::GameState::Caught);
+		ImGui::TextUnformatted("Enter: restart");
+		if (ImGui::Button("Restart")) {
+			random_seed = random_generator();
+			game.reset(random_seed);
+			fly_mode = false;
+			mCamera.mWorld.SetTranslate(game.getEyePosition());
+			mCamera.mWorld.LookTowards(glm::vec3(0.0f, 0.0f, -1.0f));
+		}
+		ImGui::EndDisabled();
+		ImGui::End();
+
 		bool const opened = ImGui::Begin("Scene Controls", nullptr, ImGuiWindowFlags_None);
 		if (opened) {
+			ImGui::BeginDisabled(game.getState() != game::GameState::Playing);
+			ImGui::Checkbox("Fly mode", &fly_mode);
+			ImGui::EndDisabled();
+			ImGui::Checkbox("Night lighting", &night_lighting);
+			ImGui::Separator();
+			bonobo::uiSelectPolygonMode("Polygon mode", polygon_mode);
 			ImGui::Checkbox("Show basis", &show_basis);
 			ImGui::SliderFloat("Basis thickness scale", &basis_thickness_scale, 0.0f, 100.0f);
 			ImGui::SliderFloat("Basis length scale", &basis_length_scale, 0.0f, 100.0f);
@@ -155,6 +298,7 @@ edaf80::Assignment5::run()
 
 		glfwSwapBuffers(window);
 	}
+
 }
 
 int main()
